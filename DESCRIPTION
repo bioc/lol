@@ -1,0 +1,13 @@
+Package: lol
+Type: Package
+Title: Lots Of Lasso
+Version: 0.99.0
+Date: 2011-04-02
+Author: Yinyin Yuan
+Maintainer: Yinyin Yuan <yy341@cam.ac.uk>
+Description: Various optimization methods for Lasso inference with matrix warpper
+Depends:  penalized, Matrix
+Imports: Matrix, penalized, graphics, grDevices, stats
+License: GPL-2
+LazyLoad: yes
+

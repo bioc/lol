@@ -1,0 +1,163 @@
+%\VignetteIndexEntry{An introduction to the lol package}
+%\VignetteDepends{penalized, Matrix}
+%\VignetteKeywords{lasso}
+%\VignettePackage{lol}
+\documentclass[a4paper]{article}
+ 
+\title{
+\textsc{R package lol} \\
+\textsc{\small Lots Of Lasso: Stable network inference for integrative genomic analysis} 
+}
+
+\author{
+Yinyin Yuan
+\thanks{Cambridge Research Institute - CRUK, Li Ka Shing Centre, Robinson Way Cambridge, CB2 0RE, UK.} \\
+\textsc{ http://www.markowetzlab.org/software/lol} \\
+\textsc{ yy341@cam.ac.uk} \\
+}
+
+\date{24th Feb 2011}
+\SweaveOpts{echo=TRUE}
+\SweaveOpts{width=5,height=3} 
+\SweaveOpts{keep.source=TRUE}
+
+\usepackage{a4wide}
+\usepackage{lscape,graphicx}
+\usepackage{subfig}
+\usepackage[margin=.8in]{geometry} 
+
+<<echo=false>>=
+options(width=80)
+options(verbose=FALSE)
+@
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Begin document
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+\emph{lol} is a package providing various optimization methods for Lasso inference. 
+As popular tools in genomics, Lasso has been used in eQTL, GWAS, and studies of
+similar kind. It provides a prominent basis in high-dimensional studies, because of its efficiency in
+performing statistical inference on thousands of variables. 
+
+
+Yet despite its popularity, Lasso inference can be problematic if not optimized properly. Solving the optimisation problem for L1 regression often involves cross-validation.
+With noisy predictors, cross-validation tends to overfit and produce unstable result. Hence, in
+the context of genomic marker selection using microarray data, we implemented different optimization methods, i.e, simultanous lasso, stability selection, multisplit lasso, and cross-validation, for increased robustness and stable outcome.
+
+
+We exemplify the use of this package using a breast cancer dataset comprising CNA and mRNA \cite{chin07highresolution}. The data set includes (i) genome-wide DNA variation, (ii) expression as an intermediate trait.
+
+Load the package `lol' and import the breast cancer data set. 
+<<>>=
+library(lol)
+data(chin07)
+dim(chin07$cn)
+dim(chin07$ge)
+@ 
+
+We can visualize in an approximate manner what is the copy number alterations across the genome in this data set, using the plotGW function.
+<<>>=
+gain <- rowSums(chin07$cn >= .2)
+loss <- -rowSums(chin07$cn <= -.2)
+plotGW(data=cbind(gain, loss), pos=attr(chin07$cn, 'chrome'), file='plotGWCN', 
+fileType='pdf', legend=c('gain', 'loss'), col=c('darkred', 'darkblue'))
+@ 
+
+\section{Genomic marker selection for individual response/gene expression}
+
+For a genes's expression profile probed by microarray, we search for the genomic markers whose copy number alterations influences this gene. The `lasso' function incorporates four different optimizers, each can be accessed by specifying the class of input object as one of the optimizers. 
+If cross-validation is prefered,  we can use the `lasso' function with a data object of class `cv', Because we will be using a lot of resampling, here we set the seed first.
+<<>>=
+Data <- list(y=chin07$ge[1,], x=t(chin07$cn))
+class(Data) <- 'cv'
+set.seed(10)
+res.cv <- lasso(Data)
+res.cv
+@ 
+This function optimizes lasso solution for correlated regulators by first choosing the minimum lambda, since the penalized package by default use 0 for the minimum which sometimes take a long time to compute due to co-linearity.
+
+
+Alternatively, we can use the stability lasso \cite{Meinshausen:2010kx} that achieves stable output by sub-sampling. The function first selects lambda that approximately give maximum $\sqrt{0.8\times p}$ predictors, while p is the number of total predictors. Then it runs lasso a number of times keeping lambda fixed. These runs are randomised with scaled predictors and subsamples. At the end, the non-zero coefficients are determined by their frequencies of selections. 
+
+<<>>=
+class(Data) <- 'stability'
+res.stability <- lasso(Data)
+res.stability
+@ 
+
+Another optimzer performs the multi-split lasso as proposed in \cite{Meinshausen:2009et}. The samples are first randomly split into two disjoint sets, one of which is used to find non-zero coefficients with a regular lasso regression, then these non-zero coefficients are fitted to another sample set with OLS. The resulting p-values after multiple runs can then be aggregated using quantiles. 
+
+<<>>=
+class(Data) <- 'multiSplit'
+res.multiSplit <- lasso(Data)
+res.multiSplit
+@ 
+
+The fourth optimizer, simultanous lasso, performs multiple runs of lasso, each time splitting samples randomly to two equal sets, run lasso on both sets, then select those coefficients that are simultaneously non-zero across two sets. 
+<<>>=
+class(Data) <- 'simultaneous'
+res.simultaneous <- lasso(Data)
+res.simultaneous
+@ 
+
+Using `plotGW', we can also visualize results from different optimizers. While any non-zero coefficients from cross-validation can be deemed significant, results from subsampling-based optimizers such as stability lasso and simultaneous lasso have to pass a significance level such as 60\% selection frequency in order to be considered significant. For more details see \cite{Meinshausen:2010kx}.
+<<>>=
+plotGW(data=cbind(res.cv$beta, res.stability$beta, res.multiSplit$beta, res.simultaneous$beta), 
+pos=attr(chin07$cn, 'chrome'), file='plotGWLassoOptimizers', fileType='pdf', width=8, 
+height=5, legend=c('cv', 'stability', 'multiSplit', 'simultaneous'), legend.pos='topleft')
+@ 
+
+\section{Genomic marker selection for multiple responses/gene expression}
+Now if the goal is to infer a network of copy number driving expression, with multiple expression profiles, we can use the function matrixLasso. This wrapper function can use different types of lasso optimizers and perform multiple, independent lasso inference on matrix responses. If the dimensionality of the input is small, the function converts the matrix of input response into a vector and solves the problem with one lasso inference. Otherwise, lasso regression is performed independently for each variables in the response matrix. 
+<<>>=
+Data <- list(y=t(chin07$ge), x=t(chin07$cn))
+res1 <- matrixLasso(Data, method='cv')
+res1
+res2 <- matrixLasso(Data, method='stability')
+res2
+@ 
+
+At the end, we recommend refitting regression models with the selected predictors using lm() so that the coefficients are not shrinked.
+<<>>=
+res.lm <- lmMatrixFit(y=Data, mat=abs(res2$coefMat), th=0.01)
+res.lm
+@ 
+
+\section{Session Information}
+<<sessionInfo, echo=FALSE>>=
+sessionInfo()
+@ 
+
+\begin{thebibliography}{99}
+
+\bibitem{chin07highresolution}
+Suet Chin, Andrew Teschendorff, John Marioni, Yanzhong Wang, Nuno
+  Barbosa-Morais, Natalie Thorne, Jose Costa, Sarah Pinder, Mark van~de Wiel,
+  Andrew Green, Ian Ellis, Peggy Porter, Simon Tavare, James Brenton, Bauke
+  Ylstra, and Carlos Caldas.
+\newblock High-resolution acgh and expression profiling identifies a novel
+  genomic subtype of er negative breast cancer.
+\newblock {\em Genome Biology}, 8(10):R215, 2007.
+
+\bibitem{Meinshausen:2010kx}
+Nicolai Meinshausen and Peter Buehlmann.
+\newblock Stability selection.
+\newblock {\em Journal of the Royal Statistical Society Series B-Statistical
+  Methodology}, 72:417--473, 2010.
+
+\bibitem{Meinshausen:2009et}
+Nicolai Meinshausen, Lukas Meier, and Peter Buehlmann.
+\newblock p-values for high-dimensional regression.
+\newblock {\em Journal of the American Statistical Association},
+  104(488):1671--1681, December 2009.
+
+\end{thebibliography}
+
+
+\end{document}

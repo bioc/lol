@@ -1,0 +1,17 @@
+importMethodsFrom(Matrix, as.vector, colSums, mean, print, rowSums,
+                  summary, which)
+
+importMethodsFrom(penalized, as.matrix, coef, plot)
+
+importFrom(graphics, abline, axis, points)
+
+importFrom(grDevices, dev.off, pdf, png)
+
+importFrom(Matrix, Matrix)
+
+importFrom(penalized, optL1, penalized, profL1)
+
+importFrom(stats, lm, quantile, runif)
+
+exportClasses(lol, lolMatrix)
+export(lasso, matrixLasso, plotGW, lasso.cv, lasso.stability, lasso.simultaneous, lasso.multiSplit, lmMatrixFit, getLambdaNcoef, print.lol, print.lolMatrix)
